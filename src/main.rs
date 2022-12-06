@@ -2,13 +2,14 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 
 fn main() {
-    let day = 5;
+    let day = 6;
     match day {
         1 => day_1(),
         2 => day_2::run(),
         3 => day_3::run(),
         4 => day_4::run(),
         5 => day_5::run(),
+        6 => day_6::run(),
         _ => (),
     }
 }
@@ -21,6 +22,53 @@ mod utils {
         let file = File::open(filename).unwrap();
         let reader = BufReader::new(file);
         reader.lines().filter_map(Result::ok).collect()
+    }
+}
+
+mod day_6 {
+    use std::collections::{HashSet, VecDeque};
+    use crate::utils::read_all_file;
+
+    pub fn run() {
+        let lines = read_all_file("inputs/input6.txt");
+        let signal = &lines[0];
+
+        let mut buf = VecDeque::new();
+
+        let mut i = 0;
+        for c in signal.chars() {
+            i+=1;
+            buf.push_back(c);
+            if buf.len() > 4 {
+                buf.pop_front();
+            }
+            if buf.len() == 4 {
+            let window_set : HashSet<char> = buf.iter().map(|c| *c).collect();
+            if window_set.len() == 4 {
+                //window is uniq chars!
+                println!("Hit a marker: {:?}, Offset: {}", buf, i);
+                break;
+            }
+            }
+        }
+
+        let mut i = 0;
+        for c in signal.chars() {
+            i+=1;
+            buf.push_back(c);
+            if buf.len() > 14 {
+                buf.pop_front();
+            }
+            if buf.len() == 14 {
+                let window_set : HashSet<char> = buf.iter().map(|c| *c).collect();
+                if window_set.len() == 14 {
+                    //window is uniq chars!
+                    println!("Hit a message marker: {:?}, Offset: {}", buf, i);
+                    break;
+                }
+            }
+        }
+
     }
 }
 
