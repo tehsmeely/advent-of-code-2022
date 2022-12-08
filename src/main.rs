@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 
 fn main() {
-    let day = 6;
+    let day = 7;
     match day {
         1 => day_1(),
         2 => day_2::run(),
@@ -10,7 +10,8 @@ fn main() {
         4 => day_4::run(),
         5 => day_5::run(),
         6 => day_6::run(),
-        _ => (),
+        7 => day_7::run(),
+        _ => panic!("Unexpected day {}", day),
     }
 }
 
@@ -25,9 +26,144 @@ mod utils {
     }
 }
 
-mod day_6 {
-    use std::collections::{HashSet, VecDeque};
+mod day_7 {
     use crate::utils::read_all_file;
+    use std::cell::RefCell;
+    use std::rc::Rc;
+
+    struct Directory {
+        name: String,
+        children: Vec<Node>,
+    }
+    struct File {
+        name: String,
+        size: usize,
+    }
+
+    enum Node {
+        File(File),
+        Dir(Rc<RefCell<Directory>>),
+    }
+
+    impl Node {
+        fn size_of(&self) -> usize {
+            match self {
+                Self::File(file) => file.size_of(),
+                Self::Dir(dir) => dir.borrow().size_of(),
+            }
+        }
+        fn dir_exn(&mut self) -> Rc<RefCell<Directory>> {
+            match self {
+                Self::File(_) => panic!("Can't fetch directory from File node"),
+                Self::Dir(dir) => dir.clone(),
+            }
+        }
+    }
+
+    impl File {
+        fn size_of(&self) -> usize {
+            self.size
+        }
+    }
+
+    impl Directory {
+        fn size_of(&self) -> usize {
+            let mut size = 0;
+            for child in self.children.iter() {
+                size += child.size_of()
+            }
+            size
+        }
+    }
+
+    fn print_fs(node: &Node, indent: usize) {
+        let indent_s = " ".repeat(indent * 2);
+        match node {
+            Node::File(file) => println!("{} - {} (file, size={})", indent_s, file.name, file.size),
+            Node::Dir(dir) => {
+                println!("{} - {} (dir)", indent_s, dir.borrow().name);
+                for child in dir.borrow().children.iter() {
+                    print_fs(child, indent + 1);
+                }
+            }
+        }
+    }
+
+    fn build_fs(lines: Vec<String>) -> Node {
+        // Lines are either a command (CD or LS) or an ls result
+
+        let mut root_dir = Directory {
+            name: "/".into(),
+            children: Vec::new(),
+        };
+        let mut root = Node::Dir(Rc::new(RefCell::new(root_dir)));
+        let mut pwd = vec![root.dir_exn()];
+        for line in lines.iter().skip(1) {
+            let parts: Vec<String> = line.split(' ').map(|s| s.into()).collect();
+            if parts[0] == "$" {
+                if parts[1] == "ls" {
+                    // do nothing actually
+                } else if parts[1] == "cd" {
+                    if parts[2] == ".." {
+                        pwd.pop();
+                    }
+                    if parts[2] != ".." {
+                        let going_into = pwd
+                            .last()
+                            .unwrap()
+                            .borrow()
+                            .children
+                            .iter()
+                            .find_map(|nod| match nod {
+                                Node::File(_) => None,
+                                Node::Dir(dir) => {
+                                    if dir.borrow().name == parts[2] {
+                                        Some(dir.clone())
+                                    } else {
+                                        None
+                                    }
+                                }
+                            })
+                            .unwrap();
+                        pwd.push(going_into);
+                    }
+                }
+            } else {
+                //must be an ls result
+                assert_eq!(parts.len(), 2);
+                let node = if parts[0] == "dir" {
+                    let new_dir = Directory {
+                        name: parts[1].clone(),
+                        children: Vec::new(),
+                    };
+                    Node::Dir(Rc::new(RefCell::new(new_dir)))
+                } else {
+                    let size = parts[0].parse::<usize>().unwrap();
+                    let file = File {
+                        name: parts[1].clone(),
+                        size,
+                    };
+                    Node::File(file)
+                };
+                pwd.last().unwrap().borrow_mut().children.push(node);
+            }
+        }
+        root
+    }
+
+    pub fn run() {
+        let lines = read_all_file("inputs/input7.example.txt");
+        let fs = build_fs(lines);
+        print_fs(&fs, 0);
+        let lines = read_all_file("inputs/input7.txt");
+        let fs = build_fs(lines);
+        print_fs(&fs, 0);
+    }
+}
+
+mod day_6 {
+    use crate::utils::read_all_file;
+    use std::collections::{HashSet, VecDeque};
 
     pub fn run() {
         let lines = read_all_file("inputs/input6.txt");
@@ -37,30 +173,30 @@ mod day_6 {
 
         let mut i = 0;
         for c in signal.chars() {
-            i+=1;
+            i += 1;
             buf.push_back(c);
             if buf.len() > 4 {
                 buf.pop_front();
             }
             if buf.len() == 4 {
-            let window_set : HashSet<char> = buf.iter().map(|c| *c).collect();
-            if window_set.len() == 4 {
-                //window is uniq chars!
-                println!("Hit a marker: {:?}, Offset: {}", buf, i);
-                break;
-            }
+                let window_set: HashSet<char> = buf.iter().map(|c| *c).collect();
+                if window_set.len() == 4 {
+                    //window is uniq chars!
+                    println!("Hit a marker: {:?}, Offset: {}", buf, i);
+                    break;
+                }
             }
         }
 
         let mut i = 0;
         for c in signal.chars() {
-            i+=1;
+            i += 1;
             buf.push_back(c);
             if buf.len() > 14 {
                 buf.pop_front();
             }
             if buf.len() == 14 {
-                let window_set : HashSet<char> = buf.iter().map(|c| *c).collect();
+                let window_set: HashSet<char> = buf.iter().map(|c| *c).collect();
                 if window_set.len() == 14 {
                     //window is uniq chars!
                     println!("Hit a message marker: {:?}, Offset: {}", buf, i);
@@ -68,7 +204,6 @@ mod day_6 {
                 }
             }
         }
-
     }
 }
 
