@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 
 fn main() {
-    let day = 8;
+    let day = 9;
     match day {
         1 => day_1(),
         2 => day_2::run(),
@@ -12,6 +12,7 @@ fn main() {
         6 => day_6::run(),
         7 => day_7::run(),
         8 => day_8::run(),
+        9 => day_9::run(),
         _ => panic!("Unexpected day {}", day),
     }
 }
@@ -24,6 +25,181 @@ mod utils {
         let file = File::open(filename).unwrap();
         let reader = BufReader::new(file);
         reader.lines().filter_map(Result::ok).collect()
+    }
+}
+
+mod day_9 {
+    use crate::utils::read_all_file;
+    use itertools::Itertools;
+    use std::fmt::Formatter;
+
+    #[derive(Clone, Debug, Ord, PartialOrd, Eq, PartialEq)]
+    struct Pos {
+        x: i32,
+        y: i32,
+    }
+
+    enum Direction {
+        Up,
+        Down,
+        Right,
+        Left,
+    }
+    impl Direction {
+        fn of_str(c: &str) -> Self {
+            match c {
+                "U" => Self::Up,
+                "D" => Self::Down,
+                "R" => Self::Right,
+                "L" => Self::Left,
+                _ => panic!("Unexpected char to direction ({})", c),
+            }
+        }
+    }
+
+    impl Pos {
+        fn new() -> Self {
+            Self { x: 0, y: 0 }
+        }
+        fn out_of_range_of(&self, other: &Self) -> bool {
+            let dx = (self.x - other.x).abs();
+            let dy = (self.y - other.y).abs();
+            dx > 1 || dy > 1
+        }
+
+        fn move_(&mut self, direction: &Direction) {
+            match direction {
+                Direction::Up => self.y += 1,
+                Direction::Down => self.y -= 1,
+                Direction::Right => self.x += 1,
+                Direction::Left => self.x -= 1,
+            }
+        }
+
+        fn set_to(&mut self, other: &Self) {
+            self.x = other.x;
+            self.y = other.y;
+        }
+        fn to_move_towards(&self, other: &Self) -> Self {
+            let mut new = self.clone();
+            new.move_towards(other);
+            new
+        }
+        fn move_towards(&mut self, other: &Self) {
+            if self.out_of_range_of(other) {
+                if self.x == other.x {
+                    //move in y
+                    if other.y > self.y {
+                        self.y += 1;
+                    } else {
+                        self.y -= 1;
+                    }
+                } else if self.y == other.y {
+                    //move in x
+                    if other.x > self.x {
+                        self.x += 1;
+                    } else {
+                        self.x -= 1;
+                    }
+                } else {
+                    //move diagonally
+                    if other.x > self.x {
+                        self.x += 1;
+                    } else {
+                        self.x -= 1;
+                    }
+                    if other.y > self.y {
+                        self.y += 1;
+                    } else {
+                        self.y -= 1;
+                    }
+                }
+            }
+        }
+    }
+
+    impl std::fmt::Display for Pos {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            write!(f, "({},{})", self.x, self.y)
+        }
+    }
+
+    struct Rope {
+        knots: Vec<Pos>,
+    }
+
+    impl Rope {
+        fn new(num_knots: usize) -> Self {
+            Self {
+                knots: vec![Pos::new(); num_knots],
+            }
+        }
+        fn move_head(&mut self, direction: &Direction) {
+            for i in 0..self.knots.len() {
+                match i {
+                    0 => self.knots[i].move_(direction),
+                    _ => {
+                        let new_knot = self.knots[i].to_move_towards(&self.knots[i - 1]);
+                        self.knots[i].set_to(&new_knot);
+                    }
+                }
+            }
+        }
+
+        fn tail_pos(&self) -> Pos {
+            self.knots.last().unwrap().clone()
+        }
+    }
+
+    fn run_two() {
+        let lines = read_all_file("inputs/input9.txt");
+
+        let mut head = Pos::new();
+        let mut tail = Pos::new();
+        let mut tail_positions = vec![tail.clone()];
+        for line in lines.iter() {
+            let parts: Vec<&str> = line.split(' ').collect();
+            assert_eq!(parts.len(), 2);
+
+            let direction = Direction::of_str(parts[0]);
+            let steps = parts[1].parse::<i32>().unwrap();
+            println!("Moving {}, {} times", parts[0], parts[1]);
+            for _i in 0..steps {
+                head.move_(&direction);
+                tail.move_towards(&head);
+                println!("H:{}, t:{}", head, tail);
+                tail_positions.push(tail.clone());
+            }
+        }
+
+        let count = tail_positions.into_iter().sorted().dedup().count();
+        println!("Number of unique tail locations: {}", count);
+    }
+
+    fn run_many() {
+        let lines = read_all_file("inputs/input9.txt");
+
+        let mut rope = Rope::new(10);
+        let mut tail_positions = vec![rope.tail_pos()];
+        for line in lines.iter() {
+            let parts: Vec<&str> = line.split(' ').collect();
+            assert_eq!(parts.len(), 2);
+            let direction = Direction::of_str(parts[0]);
+            let steps = parts[1].parse::<i32>().unwrap();
+            println!("Moving {}, {} times", parts[0], parts[1]);
+            for _i in 0..steps {
+                rope.move_head(&direction);
+                tail_positions.push(rope.tail_pos());
+            }
+        }
+
+        let count = tail_positions.into_iter().sorted().dedup().count();
+        println!("Number of unique tail locations: {}", count);
+    }
+
+    pub fn run() {
+        run_two();
+        run_many();
     }
 }
 
@@ -180,7 +356,6 @@ mod day_8 {
 mod day_7 {
     use crate::utils::read_all_file;
     use std::cell::RefCell;
-    use std::ops::Deref;
     use std::rc::Rc;
 
     struct Directory {
@@ -243,7 +418,7 @@ mod day_7 {
 
     fn sum_of_sizes_lt(node: &Node, threshold: usize, acc: usize) -> usize {
         match node {
-            Node::File(file) => acc,
+            Node::File(_file) => acc,
             Node::Dir(dir) => {
                 let mut acc = acc;
                 let size = dir.borrow().size_of();
@@ -260,7 +435,7 @@ mod day_7 {
 
     fn dir_sizes(node: &Node, mut acc: Vec<usize>) -> Vec<usize> {
         match node {
-            Node::File(file) => acc,
+            Node::File(_file) => acc,
             Node::Dir(dir) => {
                 acc.push(dir.borrow().size_of());
                 for child in dir.borrow().children.iter() {
