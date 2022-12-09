@@ -29,6 +29,7 @@ mod utils {
 mod day_7 {
     use crate::utils::read_all_file;
     use std::cell::RefCell;
+    use std::ops::Deref;
     use std::rc::Rc;
 
     struct Directory {
@@ -85,6 +86,36 @@ mod day_7 {
                 for child in dir.borrow().children.iter() {
                     print_fs(child, indent + 1);
                 }
+            }
+        }
+    }
+
+    fn sum_of_sizes_lt(node: &Node, threshold: usize, acc: usize) -> usize {
+        match node {
+            Node::File(file) => acc,
+            Node::Dir(dir) => {
+                let mut acc = acc;
+                let size = dir.borrow().size_of();
+                if size <= threshold {
+                    acc += size
+                }
+                for child in dir.borrow().children.iter() {
+                    acc = sum_of_sizes_lt(child, threshold, acc);
+                }
+                acc
+            }
+        }
+    }
+
+    fn dir_sizes(node: &Node, mut acc: Vec<usize>) -> Vec<usize> {
+        match node {
+            Node::File(file) => acc,
+            Node::Dir(dir) => {
+                acc.push(dir.borrow().size_of());
+                for child in dir.borrow().children.iter() {
+                    acc = dir_sizes(child, acc);
+                }
+                acc
             }
         }
     }
@@ -151,13 +182,50 @@ mod day_7 {
         root
     }
 
+    fn smallest_freeable_dir(dir_sizes: Vec<usize>, fs: &Node) -> usize {
+        let total = 70000000usize;
+        let needed = 30000000usize;
+
+        let currently_available = total - fs.size_of();
+        let min_to_free = needed - currently_available;
+        *dir_sizes
+            .iter()
+            .filter(|size| **size > min_to_free)
+            .min()
+            .unwrap()
+    }
+
     pub fn run() {
         let lines = read_all_file("inputs/input7.example.txt");
         let fs = build_fs(lines);
         print_fs(&fs, 0);
-        let lines = read_all_file("inputs/input7.txt");
-        let fs = build_fs(lines);
-        print_fs(&fs, 0);
+        println!(
+            "Sum of dirs under 100,000: {}",
+            sum_of_sizes_lt(&fs, 100000, 0)
+        );
+
+        let dir_sizes_ = dir_sizes(&fs, vec![]);
+        println!(
+            "Smallest freeable dir size: {}",
+            smallest_freeable_dir(dir_sizes_, &fs)
+        );
+
+        let do_full = true;
+        if do_full {
+            let lines = read_all_file("inputs/input7.txt");
+            let fs = build_fs(lines);
+            print_fs(&fs, 0);
+            println!(
+                "Sum of dirs under 100,000: {}",
+                sum_of_sizes_lt(&fs, 100000, 0)
+            );
+
+            let dir_sizes_ = dir_sizes(&fs, vec![]);
+            println!(
+                "Smallest freeable dir size: {}",
+                smallest_freeable_dir(dir_sizes_, &fs)
+            );
+        }
     }
 }
 
