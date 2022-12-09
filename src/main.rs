@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 
 fn main() {
-    let day = 7;
+    let day = 8;
     match day {
         1 => day_1(),
         2 => day_2::run(),
@@ -11,6 +11,7 @@ fn main() {
         5 => day_5::run(),
         6 => day_6::run(),
         7 => day_7::run(),
+        8 => day_8::run(),
         _ => panic!("Unexpected day {}", day),
     }
 }
@@ -23,6 +24,156 @@ mod utils {
         let file = File::open(filename).unwrap();
         let reader = BufReader::new(file);
         reader.lines().filter_map(Result::ok).collect()
+    }
+}
+
+mod day_8 {
+    use crate::utils::read_all_file;
+    use array2d::Array2D;
+
+    #[derive(Clone, Debug)]
+    struct Tree {
+        height: usize,
+        visible: bool,
+        scenic_score: usize,
+    }
+
+    impl Tree {
+        fn of_char(c: char) -> Self {
+            Tree {
+                height: c.to_digit(10).unwrap() as usize,
+                visible: false,
+                scenic_score: 0,
+            }
+        }
+    }
+
+    fn build(lines: Vec<String>) -> Array2D<Tree> {
+        let rows: Vec<Vec<Tree>> = lines
+            .iter()
+            .map(|line_string| line_string.chars().map(Tree::of_char).collect())
+            .collect();
+        Array2D::from_rows(&rows).unwrap()
+    }
+
+    fn find_visibility(
+        trees: &Array2D<Tree>,
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+    ) -> bool {
+        //walk in each direction from (x,y) and if we encounter a tree >= our size, not visible
+        let tree_height = trees[(x, y)].height;
+
+        let moves = [(0, 1), (0, -1), (1, 0), (-1, 0)];
+        moves
+            .iter()
+            .map(|(move_x, move_y)| {
+                let mut position = (x as i32, y as i32);
+                position.0 += move_x;
+                position.1 += move_y;
+                while position.0 >= 0
+                    && position.0 < (width as i32)
+                    && position.1 >= 0
+                    && position.1 < (height as i32)
+                {
+                    if trees[(position.0 as usize, position.1 as usize)].height >= tree_height {
+                        return false;
+                    }
+                    position.0 += move_x;
+                    position.1 += move_y;
+                }
+                true
+            })
+            .any(|a| a)
+    }
+
+    fn find_scenic_score(
+        trees: &Array2D<Tree>,
+        x: usize,
+        y: usize,
+        width: usize,
+        height: usize,
+    ) -> usize {
+        // TODO: Oof indeed this is very repeaty with [find_visible]
+        //walk in each direction from (x,y) and if we encounter a tree >= our size, not visible
+        let tree_height = trees[(x, y)].height;
+
+        let moves = [(0, 1), (0, -1), (1, 0), (-1, 0)];
+        let result = moves
+            .iter()
+            .map(|(move_x, move_y)| {
+                let mut position = (x as i32, y as i32);
+                let mut num_visible = 0;
+                position.0 += move_x;
+                position.1 += move_y;
+                while position.0 >= 0
+                    && position.0 < (width as i32)
+                    && position.1 >= 0
+                    && position.1 < (height as i32)
+                {
+                    num_visible += 1;
+                    if trees[(position.0 as usize, position.1 as usize)].height >= tree_height {
+                        return num_visible;
+                    }
+                    position.0 += move_x;
+                    position.1 += move_y;
+                }
+                num_visible
+            })
+            .reduce(|a, b| a * b)
+            .unwrap();
+        result as usize
+    }
+
+    fn analyse_trees(mut trees: Array2D<Tree>) -> Array2D<Tree> {
+        let width = trees.num_columns();
+        let height = trees.num_rows();
+        for i in 0..width {
+            for j in 0..height {
+                let is_visible = find_visibility(&trees, i, j, width, height);
+                let scenic_score = find_scenic_score(&trees, i, j, width, height);
+                trees[(i, j)].visible = is_visible;
+                trees[(i, j)].scenic_score = scenic_score;
+            }
+        }
+        trees
+    }
+
+    fn count_of_visible(trees: &Array2D<Tree>) -> usize {
+        let mut count = 0;
+        let width = trees.num_columns();
+        let height = trees.num_rows();
+        for i in 0..width {
+            for j in 0..height {
+                if trees[(i, j)].visible {
+                    count += 1;
+                }
+            }
+        }
+        count
+    }
+
+    fn max_scenic_score(trees: &Array2D<Tree>) -> usize {
+        let mut max = 0;
+        let width = trees.num_columns();
+        let height = trees.num_rows();
+        for i in 0..width {
+            for j in 0..height {
+                if trees[(i, j)].scenic_score > max {
+                    max = trees[(i, j)].scenic_score;
+                }
+            }
+        }
+        max
+    }
+
+    pub fn run() {
+        let lines = read_all_file("inputs/input8.txt");
+        let trees = analyse_trees(build(lines));
+        println!("Num visible: {}", count_of_visible(&trees));
+        println!("Highest scenic score: {}", max_scenic_score(&trees));
     }
 }
 
