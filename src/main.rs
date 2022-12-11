@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 
 fn main() {
-    let day = 9;
+    let day = 11;
     match day {
         1 => day_1(),
         2 => day_2::run(),
@@ -13,6 +13,8 @@ fn main() {
         7 => day_7::run(),
         8 => day_8::run(),
         9 => day_9::run(),
+        10 => day_10::run(),
+        11 => day_11::run(),
         _ => panic!("Unexpected day {}", day),
     }
 }
@@ -25,6 +27,253 @@ mod utils {
         let file = File::open(filename).unwrap();
         let reader = BufReader::new(file);
         reader.lines().filter_map(Result::ok).collect()
+    }
+}
+
+mod day_11 {
+    use itertools::Itertools;
+    use num_bigint::BigInt;
+    use num_traits::identities::Zero;
+    use std::collections::VecDeque;
+
+    enum Operation {
+        Add(i32),
+        Square,
+        Multiply(i32),
+    }
+    impl Operation {
+        fn apply(&self, in_: BigInt) -> BigInt {
+            match self {
+                Self::Add(a) => in_ + *a,
+                Self::Square => in_.pow(2),
+                Self::Multiply(m) => in_ * *m,
+            }
+        }
+    }
+    struct Monkey {
+        inventory: Vec<BigInt>,
+        operation: Operation,
+        test__divisible_by: i32,
+        true_target: i32,
+        false_target: i32,
+        inspect_count: usize,
+    }
+
+    struct MonkeyResult {
+        item: BigInt,
+        target: i32,
+    }
+
+    impl Monkey {
+        fn new(
+            inventory: Vec<i32>,
+            operation: Operation,
+            test__divisible_by: i32,
+            true_target: i32,
+            false_target: i32,
+        ) -> Self {
+            let inventory = inventory.into_iter().map(BigInt::from).collect();
+            Self {
+                inventory,
+                operation,
+                test__divisible_by,
+                true_target,
+                false_target,
+                inspect_count: 0,
+            }
+        }
+
+        fn process_items(&mut self, worry_attenuation: bool) -> Vec<MonkeyResult> {
+            let mut results = Vec::new();
+            self.inspect_count += self.inventory.len();
+
+            for item in self.inventory.drain(..) {
+                // Inspect, and apply operation
+                let item = self.operation.apply(item);
+                // Get bored and reduce
+
+                let item = if worry_attenuation { item / 3 } else { item };
+
+                let test_result = item.clone() % self.test__divisible_by;
+
+                let target = if test_result.is_zero() {
+                    self.true_target
+                } else {
+                    self.false_target
+                };
+
+                results.push(MonkeyResult { item, target });
+            }
+            results
+        }
+    }
+
+    fn setup_monkeys() -> Vec<Monkey> {
+        vec![
+            Monkey::new(vec![54, 89, 94], Operation::Multiply(7), 17, 5, 3),
+            Monkey::new(vec![66, 71], Operation::Add(4), 3, 0, 3),
+            Monkey::new(vec![76, 55, 80, 55, 55, 96, 78], Operation::Add(2), 5, 7, 4),
+            Monkey::new(
+                vec![93, 69, 76, 66, 89, 54, 59, 94],
+                Operation::Add(7),
+                7,
+                5,
+                2,
+            ),
+            Monkey::new(vec![80, 54, 58, 75, 99], Operation::Multiply(17), 11, 1, 6),
+            Monkey::new(vec![69, 70, 85, 83], Operation::Add(8), 19, 2, 7),
+            Monkey::new(vec![89], Operation::Add(6), 2, 0, 1),
+            Monkey::new(vec![62, 80, 58, 57, 93, 56], Operation::Square, 13, 6, 4),
+        ]
+    }
+
+    fn run_worry_optional(worry_attenuation: bool) {
+        let mut round_num = 0;
+        let mut monkeys = setup_monkeys();
+
+        let max_rounds = if worry_attenuation { 20 } else { 10000 };
+        while round_num < max_rounds {
+            for i in 0..monkeys.len() {
+                let results = monkeys[i].process_items(worry_attenuation);
+                for MonkeyResult { item, target } in results.iter() {
+                    monkeys[*target as usize].inventory.push(item.clone());
+                }
+            }
+            print!(".");
+            if round_num % 20 == 0 {
+                println!(" {}", round_num)
+            }
+            round_num += 1;
+        }
+
+        let monkey_business = monkeys
+            .iter()
+            .map(|monkey| monkey.inspect_count)
+            .sorted()
+            .rev()
+            .take(2)
+            .reduce(|a, b| a * b)
+            .unwrap();
+        println!("Monkey Business: {}", monkey_business);
+    }
+    pub fn run() {
+        println!("With worry attentuation");
+        run_worry_optional(true);
+        println!("Without worry attentuation");
+        run_worry_optional(false);
+    }
+}
+
+mod day_10 {
+    use crate::utils::read_all_file;
+
+    struct Cpu {
+        register: i32,
+        cycle_num: usize,
+        stored_values_at_times: Vec<i32>,
+        rendered_rows: Vec<Vec<bool>>,
+    }
+
+    impl Cpu {
+        fn new() -> Self {
+            Self {
+                register: 1,
+                cycle_num: 0,
+                stored_values_at_times: Vec::new(),
+                rendered_rows: Vec::new(),
+            }
+        }
+
+        fn step(&mut self) {
+            self.cycle_num += 1;
+            println!("Start of cycle: {}", self.cycle_num);
+            let should_record = {
+                if self.cycle_num >= 20 {
+                    (self.cycle_num - 20) % 40 == 0
+                } else {
+                    false
+                }
+            };
+            if should_record {
+                self.stored_values_at_times
+                    .push(self.register * (self.cycle_num as i32));
+            }
+
+            let row_number = (self.cycle_num - 1) / 40;
+            let column_number = ((self.cycle_num - 1) % 40) as i32;
+            if self.rendered_rows.len() <= row_number {
+                self.rendered_rows.push(Vec::new());
+            }
+
+            let should_draw_pixel =
+                column_number >= self.register - 1 && column_number <= self.register + 1;
+            println!(
+                "Drawing pixel: {} - (Sprite at {}, I am column {})",
+                if should_draw_pixel { "#" } else { "." },
+                self.register,
+                column_number
+            );
+            self.rendered_rows[row_number].push(should_draw_pixel);
+            self.render()
+        }
+
+        fn render(&self) {
+            for row in self.rendered_rows.iter() {
+                for pixel in row {
+                    if *pixel {
+                        print!("#");
+                    } else {
+                        print!(".");
+                    }
+                }
+                println!();
+            }
+        }
+    }
+
+    pub fn run() {
+        let lines = read_all_file("inputs/input10.txt");
+
+        let mut cpu = Cpu::new();
+
+        for command in lines.iter() {
+            // start cycle
+            if command == "noop" {
+                //increase_cycle
+                cpu.step();
+            } else {
+                let parts: Vec<&str> = command.split(' ').collect();
+                assert_eq!(parts.len(), 2);
+                let modifier = parts[1].parse::<i32>().unwrap();
+                //increase_cycle_by_two
+                cpu.step();
+                if false && cpu.cycle_num >= 40 {
+                    break;
+                }
+                println!();
+                cpu.step();
+                cpu.register += modifier;
+                println!(
+                    "End of cycle, finishing execute (Register is now {})",
+                    cpu.register
+                );
+            }
+            if false && cpu.cycle_num >= 40 {
+                break;
+            }
+            println!()
+        }
+
+        for snapshot in cpu.stored_values_at_times.iter() {
+            println!("{}", snapshot);
+        }
+
+        println!(
+            "Sum of snapshots: {}",
+            cpu.stored_values_at_times.iter().sum::<i32>()
+        );
+
+        cpu.render();
     }
 }
 
@@ -449,7 +698,7 @@ mod day_7 {
     fn build_fs(lines: Vec<String>) -> Node {
         // Lines are either a command (CD or LS) or an ls result
 
-        let mut root_dir = Directory {
+        let root_dir = Directory {
             name: "/".into(),
             children: Vec::new(),
         };
