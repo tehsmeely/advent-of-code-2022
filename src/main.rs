@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 
 fn main() {
-    let day = 11;
+    let day = 12;
     match day {
         1 => day_1(),
         2 => day_2::run(),
@@ -15,6 +15,7 @@ fn main() {
         9 => day_9::run(),
         10 => day_10::run(),
         11 => day_11::run(),
+        12 => day_12::run(),
         _ => panic!("Unexpected day {}", day),
     }
 }
@@ -30,11 +31,177 @@ mod utils {
     }
 }
 
+mod day_12 {
+    use crate::utils::read_all_file;
+    use array2d::Array2D;
+    use num_integer::Roots;
+    use priority_queue::double_priority_queue::DoublePriorityQueue;
+    use std::collections::{HashMap, VecDeque};
+
+    #[derive(Clone, Debug)]
+    struct MapCell {
+        height: i32,
+        is_start: bool,
+        is_end: bool,
+    }
+    impl MapCell {
+        fn of_char(c: char) -> Self {
+            let is_start = c == 'S';
+            let is_end = c == 'E';
+            let height = match c {
+                'S' => 'a' as i32,
+                'E' => 'z' as i32,
+                c => c as i32,
+            } - 97;
+            Self {
+                height,
+                is_start,
+                is_end,
+            }
+        }
+
+        fn can_move_to(&self, other: &Self) -> bool {
+            other.height - 1 <= self.height
+        }
+    }
+
+    fn build_grid(lines: Vec<String>) -> Array2D<MapCell> {
+        let rows: Vec<Vec<MapCell>> = lines
+            .iter()
+            .map(|line| line.chars().map(MapCell::of_char).collect())
+            .collect();
+
+        Array2D::from_rows(&rows).unwrap()
+    }
+
+    fn find_beginning_and_end(grid: &Array2D<MapCell>) -> ((i32, i32), (i32, i32)) {
+        let mut start = None;
+        let mut end = None;
+        for (j, row) in grid.rows_iter().enumerate() {
+            for (i, cell) in row.enumerate() {
+                if cell.is_start {
+                    start = Some((i as i32, j as i32));
+                }
+                if cell.is_end {
+                    end = Some((i as i32, j as i32));
+                }
+            }
+        }
+        (start.unwrap(), end.unwrap())
+    }
+    const ORTHOG_NEIGHBOURS: [(i32, i32); 4] = [(0, 1), (1, 0), (-1, 0), (0, -1)];
+
+    fn calc_path(grid: Array2D<MapCell>, start_override: Option<(i32, i32)>) -> Option<usize> {
+        let (start, end) = find_beginning_and_end(&grid);
+
+        let start = match start_override {
+            Some(s) => s,
+            None => start,
+        };
+
+        fn au((i, j): (i32, i32)) -> (usize, usize) {
+            // Note this flips as array2d is indexed as [(row, column)] which is basically [(y, x)]
+            (j as usize, i as usize)
+        }
+
+        fn get_neighbours(
+            (x, y): (i32, i32),
+            grid: &Array2D<MapCell>,
+            x_max: i32,
+            y_max: i32,
+        ) -> Vec<((i32, i32), i32)> {
+            ORTHOG_NEIGHBOURS
+                .into_iter()
+                .map(|(i, j)| (x + i, y + j))
+                .filter(|(new_x, new_y)| {
+                    *new_x >= 0i32 && *new_x < x_max && *new_y >= 0i32 && *new_y < y_max
+                })
+                .filter(|n| grid[au((x, y))].can_move_to(&grid[au(*n)]))
+                .map(|pos| (pos, 1))
+                .collect()
+        }
+
+        fn calc_distance(from: (i32, i32), to: (i32, i32)) -> i32 {
+            ((from.0 - to.0).pow(2) + (from.1 + to.1).pow(2)).sqrt()
+        }
+
+        let x_max = grid.num_columns() as i32;
+        let y_max = grid.num_rows() as i32;
+        println!("Size of grid: cols: {}, rows: {}", x_max, y_max);
+
+        if let Some((path, cost)) = pathfinding::prelude::astar(
+            &start,
+            |pos| get_neighbours(*pos, &grid, x_max, y_max),
+            |p| calc_distance(*p, end),
+            |p| *p == end,
+        ) {
+            //let path: HashMap<(i32, i32), i32> = path.iter().collect();
+
+            println!("Path: {:?}", path);
+            println!("Len: {}", path.len());
+            for y in 0..y_max {
+                for x in 0..x_max {
+                    print!("{}", if path.contains(&(x, y)) { "X" } else { " " })
+                }
+                println!();
+            }
+
+            Some(path.len() - 1)
+        } else {
+            None
+        }
+    }
+
+    pub fn run() {
+        let lines = read_all_file("inputs/input12.txt");
+        let grid = build_grid(lines);
+
+        for row in grid.rows_iter() {
+            for cell in row {
+                print!("[{:02}]", cell.height);
+            }
+            println!();
+        }
+
+        println!(
+            "Using actual start. Steps: {}",
+            calc_path(grid.clone(), None).unwrap()
+        );
+
+        let mut possible_starts: Vec<(i32, i32)> = Vec::new();
+
+        let x_max = grid.num_columns() as i32;
+        let y_max = grid.num_rows() as i32;
+        for y in 0..y_max {
+            for x in 0..x_max {
+                if grid.get(y as usize, x as usize).unwrap().height == 0 {
+                    possible_starts.push((x, y));
+                }
+            }
+            println!();
+        }
+
+        println!(
+            "From choosing from {} a height starts. {}",
+            possible_starts.len(),
+            possible_starts
+                .into_iter()
+                .filter_map(|start| calc_path(grid.clone(), Some(start)))
+                .min()
+                .unwrap()
+        )
+    }
+}
+
 mod day_11 {
+    use core::convert::From;
     use itertools::Itertools;
     use num_bigint::BigInt;
+    use num_integer::Integer;
     use num_traits::identities::Zero;
+    use num_traits::ToPrimitive;
     use std::collections::VecDeque;
+    use std::ops::{AddAssign, MulAssign};
 
     enum Operation {
         Add(i32),
@@ -49,11 +216,18 @@ mod day_11 {
                 Self::Multiply(m) => in_ * *m,
             }
         }
+        fn apply_mut(&self, in_: &mut BigInt) {
+            match self {
+                Self::Add(a) => in_.add_assign(*a),
+                Self::Square => *in_ = in_.pow(2),
+                Self::Multiply(m) => in_.mul_assign(*m),
+            }
+        }
     }
     struct Monkey {
         inventory: Vec<BigInt>,
         operation: Operation,
-        test__divisible_by: i32,
+        test_divisible_by: BigInt,
         true_target: i32,
         false_target: i32,
         inspect_count: usize,
@@ -76,25 +250,29 @@ mod day_11 {
             Self {
                 inventory,
                 operation,
-                test__divisible_by,
+                test_divisible_by: BigInt::from(test__divisible_by),
                 true_target,
                 false_target,
                 inspect_count: 0,
             }
         }
 
-        fn process_items(&mut self, worry_attenuation: bool) -> Vec<MonkeyResult> {
+        fn process_items(&mut self, worry_attenuation: bool, lcm: i32) -> Vec<MonkeyResult> {
             let mut results = Vec::new();
             self.inspect_count += self.inventory.len();
 
-            for item in self.inventory.drain(..) {
+            for mut item in self.inventory.drain(..) {
                 // Inspect, and apply operation
-                let item = self.operation.apply(item);
+                self.operation.apply_mut(&mut item);
                 // Get bored and reduce
 
-                let item = if worry_attenuation { item / 3 } else { item };
+                if worry_attenuation {
+                    item = item / 3
+                } else {
+                    item = item % lcm;
+                };
 
-                let test_result = item.clone() % self.test__divisible_by;
+                let test_result = item.mod_floor(&self.test_divisible_by);
 
                 let target = if test_result.is_zero() {
                     self.true_target
@@ -131,10 +309,16 @@ mod day_11 {
         let mut round_num = 0;
         let mut monkeys = setup_monkeys();
 
+        let lcm = monkeys
+            .iter()
+            .map(|m| m.test_divisible_by.to_i32().unwrap())
+            .reduce(|a, b| a * b)
+            .unwrap();
+
         let max_rounds = if worry_attenuation { 20 } else { 10000 };
         while round_num < max_rounds {
             for i in 0..monkeys.len() {
-                let results = monkeys[i].process_items(worry_attenuation);
+                let results = monkeys[i].process_items(worry_attenuation, lcm);
                 for MonkeyResult { item, target } in results.iter() {
                     monkeys[*target as usize].inventory.push(item.clone());
                 }
