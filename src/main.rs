@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 
 fn main() {
-    let day = 12;
+    let day = 13;
     match day {
         1 => day_1(),
         2 => day_2::run(),
@@ -16,6 +16,7 @@ fn main() {
         10 => day_10::run(),
         11 => day_11::run(),
         12 => day_12::run(),
+        13 => day_13::run(),
         _ => panic!("Unexpected day {}", day),
     }
 }
@@ -31,12 +32,184 @@ mod utils {
     }
 }
 
+mod day_13 {
+    use crate::utils::read_all_file;
+    use itertools::Itertools;
+    use serde::{Deserialize, Serialize};
+    use serde_json::Value;
+    use std::cmp::Ordering;
+    use std::fmt::{Display, Formatter};
+
+    #[derive(Deserialize, Serialize, Debug, Clone)]
+    enum ListItem {
+        List(Vec<ListItem>),
+        Integer(i32),
+    }
+
+    impl Display for ListItem {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            match self {
+                Self::Integer(i) => write!(f, "{}", i),
+                Self::List(l) => {
+                    let lv = l.iter().map(|v| format!("{}", v)).join(",");
+                    write!(f, "[{}]", lv)
+                }
+            }
+        }
+    }
+
+    impl ListItem {
+        fn from_value(v: Value) -> Self {
+            match v {
+                Value::Array(vals) => Self::List(vals.into_iter().map(Self::from_value).collect()),
+                Value::Number(num) => {
+                    let i = num.as_i64().unwrap() as i32;
+                    Self::Integer(i)
+                }
+                other => {
+                    panic!("Unexpected value: {}", other)
+                }
+            }
+        }
+
+        fn cmp(&self, other: &Self) -> Ordering {
+            match (self, other) {
+                (Self::List(one), Self::List(two)) => {
+                    // Record if one is longer
+                    let (one_longer, two_longer) = (one.len() > two.len(), one.len() < two.len());
+
+                    for (a, b) in one.iter().zip(two.iter()) {
+                        match a.cmp(b) {
+                            Ordering::Equal => (), // continue
+                            other => return other,
+                        }
+                    }
+
+                    // we hit the end of the equal matched list, the one with data left is bigger
+                    match (one_longer, two_longer) {
+                        (true, false) => Ordering::Greater,
+                        (false, true) => Ordering::Less,
+                        _ => Ordering::Equal,
+                    }
+                }
+                (Self::Integer(one), Self::Integer(two)) => one.cmp(two),
+                (Self::Integer(one), Self::List(two)) => {
+                    Self::List(vec![Self::Integer(one.clone())]).cmp(&Self::List(two.clone()))
+                }
+                (Self::List(one), Self::Integer(two)) => {
+                    Self::List(one.clone()).cmp(&Self::List(vec![Self::Integer(two.clone())]))
+                }
+            }
+        }
+    }
+
+    #[derive(Clone, Debug)]
+    struct Packet(ListItem);
+
+    fn parse_line(line: &str) -> Packet {
+        let de = serde_json::de::from_str(line).unwrap();
+
+        match de {
+            Value::Array(array) => Packet(ListItem::List(
+                array.into_iter().map(ListItem::from_value).collect(),
+            )),
+            other => {
+                panic!("Toplevel should always be Array: {}", other);
+            }
+        }
+    }
+
+    pub fn run() {
+        let part_1 = false;
+
+        match part_1 {
+            true => run_part1(),
+            false => run_part2(),
+        }
+    }
+    pub fn run_part2() {
+        let lines = read_all_file("inputs/input13.txt");
+
+        let divider1 = ListItem::List(vec![ListItem::List(vec![ListItem::Integer(6)])]);
+        let divider2 = ListItem::List(vec![ListItem::List(vec![ListItem::Integer(2)])]);
+
+        let mut packets = Vec::new();
+        for line in lines {
+            if line == "" {
+            } else {
+                packets.push(parse_line(&line));
+            }
+        }
+
+        packets.push(Packet(divider1.clone()));
+        packets.push(Packet(divider2.clone()));
+
+        packets.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let mut div1 = None;
+        let mut div2 = None;
+
+        for (i, packet) in packets.iter().enumerate() {
+            if let Ordering::Equal = packet.0.cmp(&divider1) {
+                div1 = Some(i + 1);
+            }
+            if let Ordering::Equal = packet.0.cmp(&divider2) {
+                div2 = Some(i + 1);
+            }
+        }
+
+        println!("Dividier index multiple: {}", div1.unwrap() * div2.unwrap());
+    }
+    pub fn run_part1() {
+        let lines = read_all_file("inputs/input13.txt");
+
+        let mut packet_a = None;
+        let mut packet_b = None;
+
+        let mut packet_pairs = Vec::new();
+
+        for line in lines {
+            if line == "" {
+                match (packet_a, packet_b) {
+                    (Some(pa), Some(pb)) => packet_pairs.push((pa, pb)),
+                    (pa, pb) => panic!(
+                        "Hit empty line but did not have two packets! pa: {:?}, pb: {:?}",
+                        pa, pb
+                    ),
+                };
+                packet_a = None;
+                packet_b = None;
+            } else {
+                let packet = parse_line(&line);
+
+                println!("Packet: {:?}", packet);
+
+                if packet_a.is_none() {
+                    packet_a = Some(packet);
+                } else {
+                    packet_b = Some(packet);
+                }
+            }
+        }
+
+        let mut right_ordered_sum = 0;
+
+        for (i, (p1, p2)) in packet_pairs.into_iter().enumerate() {
+            match p1.0.cmp(&p2.0) {
+                Ordering::Less => right_ordered_sum += i + 1,
+                Ordering::Equal => println!("Packets were Equal!:  {:?}=={:?}", p1, p2),
+                Ordering::Greater => (),
+            }
+        }
+
+        println!("Sum: {}", right_ordered_sum);
+    }
+}
+
 mod day_12 {
     use crate::utils::read_all_file;
     use array2d::Array2D;
     use num_integer::Roots;
-    use priority_queue::double_priority_queue::DoublePriorityQueue;
-    use std::collections::{HashMap, VecDeque};
 
     #[derive(Clone, Debug)]
     struct MapCell {
@@ -129,7 +302,7 @@ mod day_12 {
         let y_max = grid.num_rows() as i32;
         println!("Size of grid: cols: {}, rows: {}", x_max, y_max);
 
-        if let Some((path, cost)) = pathfinding::prelude::astar(
+        if let Some((path, _cost)) = pathfinding::prelude::astar(
             &start,
             |pos| get_neighbours(*pos, &grid, x_max, y_max),
             |p| calc_distance(*p, end),
@@ -200,7 +373,6 @@ mod day_11 {
     use num_integer::Integer;
     use num_traits::identities::Zero;
     use num_traits::ToPrimitive;
-    use std::collections::VecDeque;
     use std::ops::{AddAssign, MulAssign};
 
     enum Operation {
@@ -209,13 +381,6 @@ mod day_11 {
         Multiply(i32),
     }
     impl Operation {
-        fn apply(&self, in_: BigInt) -> BigInt {
-            match self {
-                Self::Add(a) => in_ + *a,
-                Self::Square => in_.pow(2),
-                Self::Multiply(m) => in_ * *m,
-            }
-        }
         fn apply_mut(&self, in_: &mut BigInt) {
             match self {
                 Self::Add(a) => in_.add_assign(*a),
@@ -242,7 +407,7 @@ mod day_11 {
         fn new(
             inventory: Vec<i32>,
             operation: Operation,
-            test__divisible_by: i32,
+            test_divisible_by: i32,
             true_target: i32,
             false_target: i32,
         ) -> Self {
@@ -250,7 +415,7 @@ mod day_11 {
             Self {
                 inventory,
                 operation,
-                test_divisible_by: BigInt::from(test__divisible_by),
+                test_divisible_by: BigInt::from(test_divisible_by),
                 true_target,
                 false_target,
                 inspect_count: 0,
