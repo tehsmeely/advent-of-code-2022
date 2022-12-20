@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 
 fn main() {
-    let day = 13;
+    let day = 14;
     match day {
         1 => day_1(),
         2 => day_2::run(),
@@ -17,6 +17,7 @@ fn main() {
         11 => day_11::run(),
         12 => day_12::run(),
         13 => day_13::run(),
+        14 => day_14::run(),
         _ => panic!("Unexpected day {}", day),
     }
 }
@@ -29,6 +30,343 @@ mod utils {
         let file = File::open(filename).unwrap();
         let reader = BufReader::new(file);
         reader.lines().filter_map(Result::ok).collect()
+    }
+}
+
+mod day_14 {
+    use crate::utils::read_all_file;
+    use array2d::Array2D;
+
+    #[derive(Clone, Debug, PartialEq)]
+    enum Cell {
+        Rock,
+        Air,
+        Sand,
+    }
+
+    type Grid = Array2D<Cell>;
+
+    struct Limits {
+        x_min: Option<i32>,
+        x_max: Option<i32>,
+        y_min: Option<i32>,
+        y_max: Option<i32>,
+    }
+    impl Limits {
+        fn new() -> Self {
+            Self {
+                x_min: None,
+                x_max: None,
+                y_min: None,
+                y_max: None,
+            }
+        }
+
+        fn maybe_set(&mut self, (x, y): &(i32, i32)) {
+            self.maybe_set_x(*x);
+            self.maybe_set_y(*y);
+        }
+        fn maybe_set_x(&mut self, x: i32) {
+            let x_min = match self.x_min {
+                Some(old_x) => {
+                    if old_x < x {
+                        old_x
+                    } else {
+                        x
+                    }
+                }
+                None => x,
+            };
+            let x_max = match self.x_max {
+                Some(old_x) => {
+                    if old_x > x {
+                        old_x
+                    } else {
+                        x
+                    }
+                }
+                None => x,
+            };
+            self.x_min = Some(x_min);
+            self.x_max = Some(x_max)
+        }
+        fn maybe_set_y(&mut self, y: i32) {
+            let y_min = match self.y_min {
+                Some(old_y) => {
+                    if old_y < y {
+                        old_y
+                    } else {
+                        y
+                    }
+                }
+                None => y,
+            };
+            let y_max = match self.y_max {
+                Some(old_y) => {
+                    if old_y > y {
+                        old_y
+                    } else {
+                        y
+                    }
+                }
+                None => y,
+            };
+            self.y_min = Some(y_min);
+            self.y_max = Some(y_max)
+        }
+    }
+
+    fn interpolate_points(from: &(i32, i32), to: &(i32, i32)) -> Vec<(i32, i32)> {
+        let step = ((to.0 - from.0).signum(), (to.1 - from.1).signum());
+
+        println!("From {:?} to {:?}. Step {:?}", from, to, step);
+        let mut pos = from.clone();
+        let mut result = vec![pos.clone()];
+        let mut count = 0;
+        while pos != *to {
+            pos.0 += step.0;
+            pos.1 += step.1;
+            println!("pos:{:?}", pos);
+            result.push(pos.clone());
+            count += 1;
+            if count > 100 {
+                panic!("Iteration limit");
+            }
+        }
+        result
+    }
+
+    fn populate_grid(line: &str, grid: &mut Grid, limits: &mut Limits) {
+        let points: Vec<(i32, i32)> = line
+            .split(" -> ")
+            .map(|s| {
+                let elems: Vec<&str> = s.split(',').collect();
+                assert_eq!(elems.len(), 2);
+                (
+                    elems[0].parse::<i32>().unwrap(),
+                    elems[1].parse::<i32>().unwrap(),
+                )
+            })
+            .collect();
+
+        let mut prev = points.first().unwrap();
+        limits.maybe_set(prev);
+        for end_point in points.iter().skip(1) {
+            for point in interpolate_points(prev, end_point) {
+                grid[au(point)] = Cell::Rock
+            }
+            prev = end_point;
+            limits.maybe_set(prev);
+        }
+    }
+
+    fn au((i, j): (i32, i32)) -> (usize, usize) {
+        // Note this flips as array2d is indexed as [(row, column)] which is basically [(y, x)]
+        (j as usize, i as usize)
+    }
+
+    fn spawn_sand(grid: &mut Grid, spawn_point: &(i32, i32)) {
+        grid[au(*spawn_point)] = Cell::Sand;
+    }
+
+    fn draw_grid(grid: &Grid, limits: &Limits, sand_spawn: &(i32, i32)) {
+        for row in limits.y_min.unwrap()..=limits.y_max.unwrap() {
+            for col in limits.x_min.unwrap()..=limits.x_max.unwrap() {
+                if (col, row) == *sand_spawn {
+                    print!("+");
+                } else {
+                    print!(
+                        "{}",
+                        match grid.get(row as usize, col as usize).unwrap() {
+                            Cell::Rock => "#",
+                            Cell::Air => ".",
+                            Cell::Sand => "o",
+                        }
+                    );
+                }
+            }
+            println!()
+        }
+    }
+
+    fn is_sand(grid: &Grid, col: i32, row: i32) -> bool {
+        match grid.get(row as usize, col as usize).unwrap() {
+            Cell::Sand => true,
+            _ => false,
+        }
+    }
+    fn is_free(grid: &Grid, col: i32, row: i32) -> bool {
+        match grid.get(row as usize, col as usize).unwrap() {
+            Cell::Air => true,
+            _ => false,
+        }
+    }
+
+    fn try_move(from: (i32, i32), grid: &Grid) -> Option<(i32, i32)> {
+        //try straight down
+        let col = from.0;
+        let row = from.1;
+        if is_free(grid, col, row + 1) {
+            return Some((col, row + 1));
+        }
+
+        //then down and left
+        if is_free(grid, col - 1, row + 1) {
+            return Some((col - 1, row + 1));
+        }
+
+        // then down and right
+        if is_free(grid, col + 1, row + 1) {
+            return Some((col + 1, row + 1));
+        }
+
+        None
+    }
+
+    enum UpdateResult {
+        StillUpdating,
+        AtRest,
+        OutOfBottom,
+    }
+
+    fn update_grid(grid: &mut Grid, limits: &mut Limits) -> UpdateResult {
+        // iterate from bottom up
+
+        let mut update_count = 0;
+        for row in (limits.y_min.unwrap()..=limits.y_max.unwrap()).rev() {
+            let row: i32 = row;
+            for col in (limits.x_min.unwrap() - 1)..=(limits.x_max.unwrap() + 1) {
+                let col: i32 = col;
+                if is_sand(grid, col, row) {
+                    //println!("found sand at {:?}", (col, row));
+                    if let Some((col2, row2)) = try_move((col, row), grid) {
+                        //println!("moving sand to {:?}", (col2, row2));
+                        update_count += 1;
+                        grid[au((col, row))] = Cell::Air;
+                        grid[au((col2, row2))] = Cell::Sand;
+
+                        // Expand limits if sand is pushed out to the edges
+                        limits.maybe_set_x(col2);
+
+                        if row2 > limits.y_max.unwrap() {
+                            return UpdateResult::OutOfBottom;
+                        }
+                    }
+                }
+            }
+        }
+        if update_count == 0 {
+            UpdateResult::AtRest
+        } else {
+            UpdateResult::StillUpdating
+        }
+    }
+
+    fn update_until_at_rest(grid: &mut Grid, limits: &mut Limits) -> bool {
+        loop {
+            match update_grid(grid, limits) {
+                UpdateResult::StillUpdating => (),
+                UpdateResult::AtRest => return false,
+                UpdateResult::OutOfBottom => return true,
+            }
+        }
+    }
+
+    pub fn run2() {
+        // Make an array
+        // Being really inefficient with the width here, soz
+        let mut grid = Array2D::filled_with(Cell::Air, 1000, 2000);
+
+        let mut limits = Limits::new();
+
+        // find and set sand spawn
+        let sand_spawn = (500, 0);
+        limits.maybe_set(&sand_spawn);
+
+        // Populate rocks by tracing paths from input
+        let lines = read_all_file("inputs/input14.txt");
+        for line in lines {
+            populate_grid(&line, &mut grid, &mut limits);
+        }
+
+        // add infinite bottom plane
+        let plane_y = limits.y_max.unwrap() + 2;
+        for x in 0..2000 {
+            grid[au((x, plane_y))] = Cell::Rock;
+        }
+        limits.maybe_set_y(plane_y);
+
+        draw_grid(&grid, &limits, &sand_spawn);
+
+        // Spawn sand and update rows from bottom up
+        // if sand, apply move rules
+        let mut spawn_count = 0;
+
+        while spawn_count < 10000 {
+            spawn_sand(&mut grid, &sand_spawn);
+            let sand_fell_out_of_my_bottom = update_until_at_rest(&mut grid, &mut limits);
+            print!(".");
+            if spawn_count % 50 == 0 {
+                println!();
+            }
+
+            if sand_fell_out_of_my_bottom {
+                panic!("Sand should not be falling out the bottom of an infinite plane");
+            }
+            spawn_count += 1;
+
+            // we stop this time if we came to rest and sand occupies the spawn
+            if grid[au(sand_spawn)] == Cell::Sand {
+                break;
+            }
+        }
+        println!();
+        // Don't decr spawn count because the last sand that spawned stuck around as per our end detection rules
+
+        draw_grid(&grid, &limits, &sand_spawn);
+
+        println!("Finished, spawn count: {}", spawn_count);
+    }
+
+    pub fn _run1() {
+        // Make an array
+        let mut grid = Array2D::filled_with(Cell::Air, 1000, 1000);
+
+        let mut limits = Limits::new();
+
+        // find and set sand spawn
+        let sand_spawn = (500, 0);
+        limits.maybe_set(&sand_spawn);
+
+        // Populate rocks by tracing paths from input
+        let lines = read_all_file("inputs/input14.txt");
+        for line in lines {
+            populate_grid(&line, &mut grid, &mut limits);
+        }
+
+        draw_grid(&grid, &limits, &sand_spawn);
+
+        // Spawn sand and update rows from bottom up
+        // if sand, apply move rules
+        let mut sand_fell_out_of_my_bottom = false;
+
+        let mut spawn_count = 0;
+
+        while !sand_fell_out_of_my_bottom && spawn_count < 1000 {
+            spawn_sand(&mut grid, &sand_spawn);
+            sand_fell_out_of_my_bottom = update_until_at_rest(&mut grid, &mut limits);
+            //draw_grid(&grid, &limits, &sand_spawn);
+            spawn_count += 1;
+        }
+
+        // decr since the last spawned sand fell out of the world as per the rules
+        spawn_count -= 1;
+
+        println!("Finished, spawn count: {}", spawn_count);
+    }
+
+    pub fn run() {
+        run2();
     }
 }
 
