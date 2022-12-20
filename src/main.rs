@@ -224,48 +224,44 @@ mod day_14 {
     }
 
     enum UpdateResult {
-        StillUpdating,
+        StillUpdating((i32, i32)),
         AtRest,
         OutOfBottom,
     }
 
-    fn update_grid(grid: &mut Grid, limits: &mut Limits) -> UpdateResult {
+    fn update_grid(sand_pos: (i32, i32), grid: &mut Grid, limits: &mut Limits) -> UpdateResult {
         // iterate from bottom up
 
-        let mut update_count = 0;
-        for row in (limits.y_min.unwrap()..=limits.y_max.unwrap()).rev() {
-            let row: i32 = row;
-            for col in (limits.x_min.unwrap() - 1)..=(limits.x_max.unwrap() + 1) {
-                let col: i32 = col;
-                if is_sand(grid, col, row) {
-                    //println!("found sand at {:?}", (col, row));
-                    if let Some((col2, row2)) = try_move((col, row), grid) {
-                        //println!("moving sand to {:?}", (col2, row2));
-                        update_count += 1;
-                        grid[au((col, row))] = Cell::Air;
-                        grid[au((col2, row2))] = Cell::Sand;
+        let row = sand_pos.1;
+        let col = sand_pos.0;
+        if is_sand(grid, col, row) {
+            if let Some((col2, row2)) = try_move((col, row), grid) {
+                grid[au((col, row))] = Cell::Air;
+                grid[au((col2, row2))] = Cell::Sand;
 
-                        // Expand limits if sand is pushed out to the edges
-                        limits.maybe_set_x(col2);
+                // Expand limits if sand is pushed out to the edges
+                limits.maybe_set_x(col2);
 
-                        if row2 > limits.y_max.unwrap() {
-                            return UpdateResult::OutOfBottom;
-                        }
-                    }
+                if row2 > limits.y_max.unwrap() {
+                    return UpdateResult::OutOfBottom;
+                } else {
+                    return UpdateResult::StillUpdating((col2, row2));
                 }
+            } else {
+                UpdateResult::AtRest
             }
-        }
-        if update_count == 0 {
-            UpdateResult::AtRest
         } else {
-            UpdateResult::StillUpdating
+            panic!("Sand wasn't found at location claimed to be sand pos");
         }
     }
 
-    fn update_until_at_rest(grid: &mut Grid, limits: &mut Limits) -> bool {
+    fn update_until_at_rest(sand_start: &(i32, i32), grid: &mut Grid, limits: &mut Limits) -> bool {
+        let mut sand_pos = *sand_start;
         loop {
-            match update_grid(grid, limits) {
-                UpdateResult::StillUpdating => (),
+            match update_grid(sand_pos, grid, limits) {
+                UpdateResult::StillUpdating(new_sand_pos) => {
+                    sand_pos = new_sand_pos;
+                }
                 UpdateResult::AtRest => return false,
                 UpdateResult::OutOfBottom => return true,
             }
@@ -302,9 +298,10 @@ mod day_14 {
         // if sand, apply move rules
         let mut spawn_count = 0;
 
-        while spawn_count < 10000 {
+        while spawn_count < 100000 {
             spawn_sand(&mut grid, &sand_spawn);
-            let sand_fell_out_of_my_bottom = update_until_at_rest(&mut grid, &mut limits);
+            let sand_fell_out_of_my_bottom =
+                update_until_at_rest(&sand_spawn, &mut grid, &mut limits);
             print!(".");
             if spawn_count % 50 == 0 {
                 println!();
@@ -354,7 +351,7 @@ mod day_14 {
 
         while !sand_fell_out_of_my_bottom && spawn_count < 1000 {
             spawn_sand(&mut grid, &sand_spawn);
-            sand_fell_out_of_my_bottom = update_until_at_rest(&mut grid, &mut limits);
+            sand_fell_out_of_my_bottom = update_until_at_rest(&sand_spawn, &mut grid, &mut limits);
             //draw_grid(&grid, &limits, &sand_spawn);
             spawn_count += 1;
         }
