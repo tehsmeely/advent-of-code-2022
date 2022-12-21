@@ -2,7 +2,7 @@ use std::fs::File;
 use std::io::{BufRead, BufReader};
 
 fn main() {
-    let day = 14;
+    let day = 16;
     match day {
         1 => day_1(),
         2 => day_2::run(),
@@ -18,18 +18,241 @@ fn main() {
         12 => day_12::run(),
         13 => day_13::run(),
         14 => day_14::run(),
+        15 => day_15::run(),
+        16 => day_16::run(),
         _ => panic!("Unexpected day {}", day),
     }
 }
 
 mod utils {
+    use num_traits::{Num, PrimInt, Signed, Unsigned};
+    use std::fmt::{Display, Formatter};
     use std::fs::File;
     use std::io::{BufRead, BufReader};
+    use std::ops::{Add, Sub};
+
+    #[derive(Debug)]
+    pub struct V2<I> {
+        pub x: I,
+        pub y: I,
+    }
+
+    impl<I: Display> Display for V2<I> {
+        fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+            write!(f, "({},{})", self.x, self.y)
+        }
+    }
+
+    impl<I> V2<I> {
+        pub fn new(x: I, y: I) -> V2<I> {
+            Self { x, y }
+        }
+    }
+
+    pub trait GridDist {
+        type Out;
+        fn grid_dist(&self, other: &Self) -> Self::Out;
+    }
+
+    impl<I> GridDist for V2<I>
+    where
+        I: PrimInt,
+    {
+        type Out = I;
+
+        fn grid_dist(&self, other: &Self) -> Self::Out {
+            let dx = if self.x > other.x {
+                self.x - other.x
+            } else {
+                other.x - self.x
+            };
+            let dy = if self.y > other.y {
+                self.y - other.y
+            } else {
+                other.y - self.y
+            };
+            dx + dy
+        }
+    }
 
     pub fn read_all_file(filename: &str) -> Vec<String> {
         let file = File::open(filename).unwrap();
         let reader = BufReader::new(file);
         reader.lines().filter_map(Result::ok).collect()
+    }
+}
+
+mod day_16 {
+    pub fn run() {}
+}
+
+mod day_15 {
+    use crate::utils::{read_all_file, GridDist, V2};
+    use itertools::Itertools;
+    use regex::Regex;
+    use std::collections::HashSet;
+    use std::ops::ControlFlow;
+
+    fn parse_line(line: &str) -> (V2<i32>, V2<i32>) {
+        let reg = r"Sensor at x=(-?\d+), y=(-?\d+): closest beacon is at x=(-?\d+), y=(-?\d+)";
+        let re = Regex::new(reg).unwrap();
+        println!("{}", line);
+        let caps = re.captures(line).unwrap();
+
+        let sens_x: i32 = caps[1].parse().unwrap();
+        let sens_y: i32 = caps[2].parse().unwrap();
+        let beac_x: i32 = caps[3].parse().unwrap();
+        let beac_y: i32 = caps[4].parse().unwrap();
+
+        (V2::new(sens_x, sens_y), V2::new(beac_x, beac_y))
+    }
+
+    pub fn run() {
+        let lines = read_all_file("inputs/input15.txt");
+
+        let sensors_and_beacons: Vec<(V2<i32>, V2<i32>)> =
+            lines.iter().map(|s| parse_line(&s)).collect();
+
+        let part_1 = false;
+        let part_2 = true;
+        if part_1 {
+            // For each Sensor, we know there's no other beacon within N radius of it
+            // where N is the quoted distance
+
+            let target_row = 2000000;
+            let mut set_x_on_target_row: HashSet<i32> = HashSet::new();
+            for (sensor, beacon) in sensors_and_beacons.iter() {
+                //println!("{:?} -> {:?}", sensor, beacon);
+                let sensor_distance = sensor.grid_dist(&beacon);
+                //println!("dist: {:?}", sensor_distance);
+
+                /*
+                y = 1, distance = 9. Variable target row:
+                07 |....#######..  -> (y + 9) - 7 = (10) - 8 = 3
+                08 |.....#####...  -> (y + 9) - 8 = (10) - 8 = 2
+                09 |......###....  -> (y + 9) - 9 = (10) - 9 = 1
+                10 |.......#.....  -> (y + 9) - 10 = (10) - 10 = 0
+                */
+                /*
+                y = 15, distance = 8. Variable target row:
+                07 |.......#.....  -> (y - 8) - 7 = 7 - (15 - 8) = 7 - 7 = 0
+                08 |......###....  -> (y + 8) - 8 = 8 - (15 - 8) = 8 - 7 = -1
+                09 |.....#####...  -> (y + 8) - 9 = 9 - (7) = 2
+                10 |....#######..  -> (y + 8) - 10 = 10 - (7) = 3
+                */
+                let half_width = if sensor.y < target_row {
+                    sensor.y + sensor_distance - target_row
+                } else {
+                    target_row - (sensor.y - sensor_distance)
+                };
+                if half_width >= 0 {
+                    println!(
+                        "Sensor at {} (dist {}) impacts target row. Overlap width = {}",
+                        sensor,
+                        sensor_distance,
+                        (half_width * 2) + 1
+                    );
+                    // set for x and x(+-) half_width
+                    for x in sensor.x - half_width..=sensor.x + half_width {
+                        set_x_on_target_row.insert(x);
+                    }
+                }
+            }
+            // Prune known beacons:
+            for (_sensor, beacon) in sensors_and_beacons.iter() {
+                if beacon.y == target_row {
+                    set_x_on_target_row.remove(&beacon.x);
+                }
+            }
+
+            let x_min = set_x_on_target_row.iter().min().unwrap();
+            let x_max = set_x_on_target_row.iter().max().unwrap();
+            let render = false;
+            if render {
+                println!();
+                for j in 0..2 {
+                    for i in x_min - 1..=x_max + 1 {
+                        if j == 0 {
+                            if i % 5 == 0 {
+                                print!("{}", i)
+                            } else if ((i - 1) % 5 == 0) && i > 10 {
+                                ()
+                            } else {
+                                print!(" ")
+                            }
+                        } else {
+                            if set_x_on_target_row.contains(&i) {
+                                print!("#");
+                            } else {
+                                print!(".");
+                            }
+                        }
+                    }
+                    println!();
+                }
+            }
+            println!("Set positions:{}", set_x_on_target_row.len());
+        } else if part_2 {
+            let _result = find(&sensors_and_beacons);
+        } else {
+            'outer_loop: for y in 0..=4_000_000 {
+                for x in 0..=4_000_000 {
+                    let pos = V2::new(x, y);
+                    let mut is_undetected = true;
+
+                    'beacon_loop: for (sensor, beacon) in sensors_and_beacons.iter() {
+                        let sensor_distance = sensor.grid_dist(&beacon);
+                        let test_pos_distance = pos.grid_dist(sensor);
+
+                        if test_pos_distance <= sensor_distance {
+                            is_undetected = false;
+                            break 'beacon_loop;
+                        }
+                    }
+
+                    if is_undetected {
+                        println!("Undetected position is: {}", pos);
+                        println!("Tuning freq : {}", (4000000 * x) + y);
+                        break 'outer_loop;
+                    }
+                }
+                if y % 10000 == 0 {
+                    println!(". {}", y)
+                }
+            }
+        }
+    }
+
+    fn find(sensors_and_beacons: &Vec<(V2<i32>, V2<i32>)>) -> V2<i32> {
+        use rayon::prelude::*;
+        let result = (0..=4_000_000u64).into_par_iter().try_for_each(|y| {
+            (0..=4_000_000u64).into_par_iter().try_for_each(|x| {
+                let pos = V2::new(x as i32, y as i32);
+                let mut is_undetected = true;
+
+                'beacon_loop: for (sensor, beacon) in sensors_and_beacons.iter() {
+                    let sensor_distance = sensor.grid_dist(beacon);
+                    let test_pos_distance = pos.grid_dist(sensor);
+
+                    if test_pos_distance <= sensor_distance {
+                        is_undetected = false;
+                        break 'beacon_loop;
+                    }
+                }
+
+                if is_undetected {
+                    println!("Undetected position is: {}", pos);
+                    println!("Tuning freq : {}", (4000000 * x) + y);
+                    ControlFlow::Break(pos)
+                } else {
+                    ControlFlow::Continue(())
+                }
+            })
+        });
+        match result {
+            ControlFlow::Break(pos) => pos,
+            ControlFlow::Continue(()) => panic!("Loop ended with no pos found!"),
+        }
     }
 }
 
@@ -142,10 +365,7 @@ mod day_14 {
             .map(|s| {
                 let elems: Vec<&str> = s.split(',').collect();
                 assert_eq!(elems.len(), 2);
-                (
-                    elems[0].parse::<i32>().unwrap(),
-                    elems[1].parse::<i32>().unwrap(),
-                )
+                (elems[0].parse().unwrap(), elems[1].parse().unwrap())
             })
             .collect();
 
@@ -928,7 +1148,7 @@ mod day_10 {
             } else {
                 let parts: Vec<&str> = command.split(' ').collect();
                 assert_eq!(parts.len(), 2);
-                let modifier = parts[1].parse::<i32>().unwrap();
+                let modifier: i32 = parts[1].parse().unwrap();
                 //increase_cycle_by_two
                 cpu.step();
                 if false && cpu.cycle_num >= 40 {
